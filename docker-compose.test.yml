@@ -6,7 +6,7 @@ services:
       dockerfile: Dockerfile.test.cpu
     privileged: true
     shm_size: 8gb
-  test-cpu-openmpi-py3_6-tf1_6_0-keras2_1_2-torch0_4_1-mxnet1_4_1-pyspark2_3_2:
+  test-cpu-openmpi-py3_6-tf1_6_0-keras2_1_2-torch1_0_0-mxnet1_4_1-pyspark2_3_2:
     extends: test-cpu-base
     build:
       args:
@@ -15,7 +15,7 @@ services:
         PYTHON_VERSION: 3.6
         TENSORFLOW_PACKAGE: tensorflow==1.6.0
         KERAS_PACKAGE: keras==2.1.2
-        PYTORCH_PACKAGE: torch==0.4.1
+        PYTORCH_PACKAGE: torch==1.0.0
         TORCHVISION_PACKAGE: torchvision==0.2.2.post3
         MXNET_PACKAGE: mxnet==1.4.1
         PYSPARK_PACKAGE: pyspark==2.3.2
