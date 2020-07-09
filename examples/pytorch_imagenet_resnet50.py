@@ -112,7 +112,7 @@ def validate(epoch):
                 output = model(data)
 
                 val_loss.update(F.cross_entropy(output, target))
-                top1acc, top5acc = accuracy_b(output, target_batch, (1, 5))
+                top1acc, top5acc = accuracy_b(output, target, (1, 5))
                 val_accuracy_top1.update(top1acc)
                 val_accuracy_top5.update(top5acc)
                 t.set_postfix({'loss': val_loss.avg.item(),
