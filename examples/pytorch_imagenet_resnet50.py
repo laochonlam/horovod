@@ -58,7 +58,8 @@ def train(epoch):
     model.train()
     train_sampler.set_epoch(epoch)
     train_loss = Metric('train_loss')
-    train_accuracy = Metric('train_accuracy')
+    train_accuracy_top1 = Metric('train_accuracy_top1')
+    train_accuracy_top5 = Metric('train_accuracy_top5')
 
     with tqdm(total=len(train_loader),
               desc='Train Epoch     #{}'.format(epoch + 1),
@@ -74,7 +75,9 @@ def train(epoch):
                 data_batch = data[i:i + args.batch_size]
                 target_batch = target[i:i + args.batch_size]
                 output = model(data_batch)
-                train_accuracy.update(accuracy(output, target_batch))
+                top1acc, top5acc = accuracy_b(output, target_batch, (1, 5))
+                train_accuracy_top1.update(top1acc)
+                train_accuracy_top5.update(top5acc)
                 loss = F.cross_entropy(output, target_batch)
                 train_loss.update(loss)
                 # Average gradients among sub-batches
@@ -83,18 +86,21 @@ def train(epoch):
             # Gradient is applied across all ranks
             optimizer.step()
             t.set_postfix({'loss': train_loss.avg.item(),
-                           'accuracy': 100. * train_accuracy.avg.item()})
+                           'accuracy@1': 100. * train_accuracy_top1.avg.item(),
+                           'accuracy@5': 100. * train_accuracy_top5.avg.item()})
             t.update(1)
 
     if log_writer:
         log_writer.add_scalar('train/loss', train_loss.avg, epoch)
-        log_writer.add_scalar('train/accuracy', train_accuracy.avg, epoch)
+        log_writer.add_scalar('train/accuracy@1', train_accuracy_top1.avg, epoch)
+        log_writer.add_scalar('train/accuracy@5', train_accuracy_top5.avg, epoch)
 
 
 def validate(epoch):
     model.eval()
     val_loss = Metric('val_loss')
-    val_accuracy = Metric('val_accuracy')
+    val_accuracy_top1 = Metric('val_accuracy_top1')
+    val_accuracy_top5 = Metric('val_accuracy_top5')
 
     with tqdm(total=len(val_loader),
               desc='Validate Epoch  #{}'.format(epoch + 1),
@@ -106,14 +112,18 @@ def validate(epoch):
                 output = model(data)
 
                 val_loss.update(F.cross_entropy(output, target))
-                val_accuracy.update(accuracy(output, target))
+                top1acc, top5acc = accuracy_b(output, target_batch, (1, 5))
+                val_accuracy_top1.update(top1acc)
+                val_accuracy_top5.update(top5acc)
                 t.set_postfix({'loss': val_loss.avg.item(),
-                               'accuracy': 100. * val_accuracy.avg.item()})
+                               'accuracy@1': 100. * val_accuracy_top1.avg.item(),
+                               'accuracy@5': 100. * val_accuracy_top5.avg.item()})
                 t.update(1)
 
     if log_writer:
         log_writer.add_scalar('val/loss', val_loss.avg, epoch)
-        log_writer.add_scalar('val/accuracy', val_accuracy.avg, epoch)
+        log_writer.add_scalar('val/accuracy@1', val_accuracy_top1.avg, epoch)
+        log_writer.add_scalar('val/accuracy@5', val_accuracy_top5.avg, epoch)
 
 
 # Horovod: using `lr = base_lr * hvd.size()` from the very beginning leads to worse final
@@ -139,8 +149,27 @@ def adjust_learning_rate(epoch, batch_idx):
 def accuracy(output, target):
     # get the index of the max log-probability
     pred = output.max(1, keepdim=True)[1]
+    # print(pred.eq(target.view_as(pred)).cpu().float().mean())
     return pred.eq(target.view_as(pred)).cpu().float().mean()
 
+
+def accuracy_b(output, target, topk=(1,)):
+    """Computes the precision@k for the specified values of k"""
+    maxk = max(topk)
+    batch_size = target.size(0)
+
+    _, pred = output.topk(maxk, 1, True, True)
+    pred = pred.t()
+    correct = pred.eq(target.view(1, -1).expand_as(pred))
+    # print(correct.shape)
+
+    res = []
+    for k in topk:
+        correct_k = correct[:k].view(-1).float().sum(0)
+        # print(correct_k)
+        res.append(correct_k / batch_size)
+    
+    return res
 
 def save_checkpoint(epoch):
     if hvd.rank() == 0:
@@ -167,7 +196,6 @@ class Metric(object):
     def avg(self):
         return self.sum / self.n
 
-
 if __name__ == '__main__':
     args = parser.parse_args()
     args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -175,6 +203,10 @@ if __name__ == '__main__':
     allreduce_batch_size = args.batch_size * args.batches_per_allreduce
 
     hvd.init()
+    
+    if hvd.rank() == 0:
+        print("[Lam modified version]')
+
     torch.manual_seed(args.seed)
 
     if args.cuda:
@@ -278,8 +310,7 @@ if __name__ == '__main__':
     optimizer = hvd.DistributedOptimizer(
         optimizer, named_parameters=model.named_parameters(),
         compression=compression,
-        backward_passes_per_step=args.batches_per_allreduce,
-        op=hvd.Adasum if args.use_adasum else hvd.Average)
+        backward_passes_per_step=args.batches_per_allreduce,)
 
     # Restore from a previous checkpoint, if initial_epoch is specified.
     # Horovod: restore on the first worker which will broadcast weights to other workers.
