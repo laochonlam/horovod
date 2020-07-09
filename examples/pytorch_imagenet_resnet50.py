@@ -205,7 +205,7 @@ if __name__ == '__main__':
     hvd.init()
     
     if hvd.rank() == 0:
-        print("[Lam modified version]')
+        print("[Lam modified version]")
 
     torch.manual_seed(args.seed)
 
