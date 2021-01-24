@@ -9,6 +9,7 @@ from torchvision import datasets, transforms, models
 import horovod.torch as hvd
 import os
 import math
+import timeit
 from tqdm import tqdm
 from distutils.version import LooseVersion
 
@@ -59,6 +60,8 @@ parser.add_argument('--accuracy-threshold', type=int, default=93,
                     help='accuracy threshold to stop')
 
 def train(epoch):
+    epoch_start_time = timeit.default_timer()
+
     model.train()
     train_sampler.set_epoch(epoch)
     train_loss = Metric('train_loss')
@@ -93,6 +96,8 @@ def train(epoch):
                            'accuracy@1': 100. * train_accuracy_top1.avg.item(),
                            'accuracy@5': 100. * train_accuracy_top5.avg.item()})
             t.update(1)
+
+    epoch_stop_time = timeit.default_timer()
 
     if log_writer:
         log_writer.add_scalar('train/loss', train_loss.avg, epoch)
