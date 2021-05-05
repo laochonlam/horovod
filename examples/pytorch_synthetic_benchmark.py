@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import argparse
 import torch.backends.cudnn as cudnn
 import torch.nn.functional as F
@@ -35,6 +37,7 @@ parser.add_argument('--use-adasum', action='store_true', default=False,
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
 
+print("[Lam modified version]")
 hvd.init()
 
 if args.cuda:
@@ -64,8 +67,7 @@ compression = hvd.Compression.fp16 if args.fp16_allreduce else hvd.Compression.n
 # Horovod: wrap optimizer with DistributedOptimizer.
 optimizer = hvd.DistributedOptimizer(optimizer,
                                      named_parameters=model.named_parameters(),
-                                     compression=compression,
-                                     op=hvd.Adasum if args.use_adasum else hvd.Average)
+                                     compression=compression)
 
 # Horovod: broadcast parameters & optimizer state.
 hvd.broadcast_parameters(model.state_dict(), root_rank=0)
